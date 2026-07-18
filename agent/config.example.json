@@ -1,0 +1,6 @@
+{
+  "server": "wss://YOUR-APP.onrender.com",
+  "deviceId": "home-pc",
+  "secret": "RenderのAGENT_SECRETと同じ32文字以上のランダム文字列",
+  "fps": 30
+}

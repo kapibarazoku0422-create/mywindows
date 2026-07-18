@@ -1,0 +1,6 @@
+node_modules/
+.env
+agent/.venv/
+agent/config.json
+*.log
+__pycache__/
