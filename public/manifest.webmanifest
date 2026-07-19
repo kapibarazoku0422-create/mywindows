@@ -1,0 +1,9 @@
+{
+  "name": "My Remote PC",
+  "short_name": "Remote PC",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#03060b",
+  "theme_color": "#070b14"
+}

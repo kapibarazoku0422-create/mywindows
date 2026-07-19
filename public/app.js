@@ -16,7 +16,12 @@ function openSocket(){
   ws.onmessage=async e=>{const m=JSON.parse(e.data);if(m.type==='status'){online=m.online;badge.textContent=online?'PCオンライン':'PCオフライン';badge.classList.toggle('online',online);connectBtn.disabled=!online;hint.hidden=online}else if(m.type==='answer'&&pc){await pc.setRemoteDescription(m.sdp)}else if(m.type==='ice'&&pc&&m.candidate){await pc.addIceCandidate(m.candidate).catch(()=>{})}else if(m.type==='disconnect'){disconnect()}};
   ws.onclose=()=>setTimeout(()=>{if(!remote.hidden)openSocket()},1500);
 }
+async function enterLandscape(){
+  try { if(!document.fullscreenElement) await document.documentElement.requestFullscreen?.(); } catch {}
+  try { await screen.orientation?.lock?.('landscape'); } catch {}
+}
 async function connect(){
+  await enterLandscape();
   disconnect(false); pc=new RTCPeerConnection({iceServers});
   pc.addTransceiver('video',{direction:'recvonly'});
   pc.ontrack=e=>{video.srcObject=e.streams[0];hint.hidden=true};
@@ -40,6 +45,6 @@ $('keyboard').onclick=()=>keyboardInput.focus();
 keyboardInput.addEventListener('beforeinput',e=>{if(e.data)control({type:'text',text:e.data});if(e.inputType==='deleteContentBackward')control({type:'key',action:'press',key:'Backspace'});keyboardInput.value=''});
 document.addEventListener('keydown',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'down',key:e.key,code:e.code})}});
 document.addEventListener('keyup',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'up',key:e.key,code:e.code})}});
-$('fullscreen').onclick=()=>document.documentElement.requestFullscreen?.();
+$('fullscreen').onclick=enterLandscape;
 $('logout').onclick=async()=>{disconnect();await api('/api/logout',{method:'POST'});remote.hidden=true;login.hidden=false;ws?.close()};
 openApp();
