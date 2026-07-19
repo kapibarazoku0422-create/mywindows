@@ -8,13 +8,16 @@ const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 function syncViewport(){
   const viewport=window.visualViewport;
   document.documentElement.style.setProperty('--app-height',`${Math.floor(viewport?.height||window.innerHeight)}px`);
-  document.documentElement.style.setProperty('--app-top',`${Math.floor(viewport?.offsetTop||0)}px`);
 }
 syncViewport();
 window.addEventListener('resize',syncViewport);
 window.addEventListener('orientationchange',()=>setTimeout(syncViewport,150));
 window.visualViewport?.addEventListener('resize',syncViewport);
 window.visualViewport?.addEventListener('scroll',syncViewport);
+document.addEventListener('fullscreenchange',syncViewport);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncViewport()});
+document.addEventListener('selectstart',e=>{if(!remote.hidden)e.preventDefault()});
+document.addEventListener('dragstart',e=>{if(!remote.hidden)e.preventDefault()});
 
 async function api(url, options={}) { const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'通信エラー'); return r.json(); }
 async function openApp(){
@@ -28,8 +31,12 @@ function openSocket(){
   ws.onclose=()=>setTimeout(()=>{if(!remote.hidden)openSocket()},1500);
 }
 async function enterLandscape(){
-  try { if(!document.fullscreenElement) await document.documentElement.requestFullscreen?.(); } catch {}
+  if(!document.fullscreenElement&&document.documentElement.requestFullscreen){
+    try { await document.documentElement.requestFullscreen({navigationUI:'hide'}); }
+    catch { try { await document.documentElement.requestFullscreen(); } catch {} }
+  }
   try { await screen.orientation?.lock?.('landscape'); } catch {}
+  syncViewport();
 }
 async function connect(){
   await enterLandscape();
@@ -80,6 +87,9 @@ wrap.addEventListener('wheel',e=>{e.preventDefault();control({type:'wheel',dx:e.
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>control({type:'key',action:'press',key:b.dataset.key}));
 document.querySelectorAll('[data-combo]').forEach(b=>b.onclick=()=>control({type:'combo',keys:b.dataset.combo.split('-')}));
 $('keyboard').onclick=()=>keyboardInput.focus();
+const fitLevels=[100,94,90];let fitIndex=matchMedia('(pointer:coarse)').matches?1:0;
+function applyFit(){const size=`${fitLevels[fitIndex]}%`;video.style.width=size;video.style.height=size;$('fit').textContent=`表示 ${fitLevels[fitIndex]}%`}
+$('fit').onclick=()=>{fitIndex=(fitIndex+1)%fitLevels.length;applyFit()};applyFit();
 keyboardInput.addEventListener('beforeinput',e=>{if(e.data)control({type:'text',text:e.data});if(e.inputType==='deleteContentBackward')control({type:'key',action:'press',key:'Backspace'});keyboardInput.value=''});
 document.addEventListener('keydown',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'down',key:e.key,code:e.code})}});
 document.addEventListener('keyup',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'up',key:e.key,code:e.code})}});

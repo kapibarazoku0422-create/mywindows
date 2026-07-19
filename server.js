@@ -63,7 +63,11 @@ app.post('/api/logout', (_req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/status', requireSession, (_req, res) => res.json({ deviceId: DEVICE_ID, online: Boolean(agent?.readyState === WebSocket.OPEN) }));
-app.use(express.static(path.join(__dirname, 'public'), { etag: true, maxAge: isProduction ? '1h' : 0 }));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0,
+  setHeaders: res => res.setHeader('Cache-Control', 'no-store, max-age=0')
+}));
 app.get('/{*splat}', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const server = http.createServer(app);
