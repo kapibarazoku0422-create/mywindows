@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const login = $('login'), remote = $('remote'), badge = $('badge'), connectBtn = $('connect');
 const video = $('screen'), wrap = $('screenWrap'), hint = $('hint'), keyboardInput = $('keyboardInput');
-let ws, pc, dc, online = false, lastMove = 0;
+let ws, pc, dc, online = false, lastMove = 0, touchGesture = null;
 const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 async function api(url, options={}) { const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'通信エラー'); return r.json(); }
@@ -35,9 +35,36 @@ function control(m){if(dc?.readyState==='open')dc.send(JSON.stringify(m))}
 function disconnect(signal=true){if(signal)sendSignal({type:'disconnect'});dc?.close();pc?.close();dc=null;pc=null;video.srcObject=null}
 connectBtn.onclick=connect;
 function point(e){const r=video.getBoundingClientRect(),vw=video.videoWidth||16,vh=video.videoHeight||9,videoRatio=vw/vh,boxRatio=r.width/r.height;let w,h,x0,y0;if(boxRatio>videoRatio){h=r.height;w=h*videoRatio;x0=r.left+(r.width-w)/2;y0=r.top}else{w=r.width;h=w/videoRatio;x0=r.left;y0=r.top+(r.height-h)/2}return{x:Math.max(0,Math.min(1,(e.clientX-x0)/w)),y:Math.max(0,Math.min(1,(e.clientY-y0)/h))}}
-wrap.addEventListener('pointerdown',e=>{wrap.setPointerCapture(e.pointerId);control({type:'pointer',action:'down',button:e.button,...point(e)})});
-wrap.addEventListener('pointermove',e=>{if(Date.now()-lastMove<16)return;lastMove=Date.now();control({type:'pointer',action:'move',...point(e)})});
-wrap.addEventListener('pointerup',e=>control({type:'pointer',action:'up',button:e.button,...point(e)}));
+wrap.addEventListener('contextmenu',e=>e.preventDefault());
+wrap.addEventListener('pointerdown',e=>{
+  e.preventDefault();wrap.setPointerCapture(e.pointerId);
+  if(e.pointerType==='touch'){
+    const p=point(e);touchGesture={id:e.pointerId,startX:e.clientX,startY:e.clientY,moved:false,held:false,last:p};
+    touchGesture.timer=setTimeout(()=>{if(!touchGesture||touchGesture.id!==e.pointerId||touchGesture.moved)return;touchGesture.held=true;control({type:'pointer',action:'down',button:0,...touchGesture.last})},500);
+    return;
+  }
+  control({type:'pointer',action:'down',button:e.button,...point(e)});
+});
+wrap.addEventListener('pointermove',e=>{
+  e.preventDefault();if(Date.now()-lastMove<16)return;lastMove=Date.now();const p=point(e);
+  if(e.pointerType==='touch'&&touchGesture?.id===e.pointerId){
+    touchGesture.last=p;
+    if(Math.hypot(e.clientX-touchGesture.startX,e.clientY-touchGesture.startY)>10){touchGesture.moved=true;clearTimeout(touchGesture.timer)}
+    control({type:'pointer',action:'move',...p});return;
+  }
+  control({type:'pointer',action:'move',...p});
+});
+wrap.addEventListener('pointerup',e=>{
+  e.preventDefault();
+  if(e.pointerType==='touch'&&touchGesture?.id===e.pointerId){
+    clearTimeout(touchGesture.timer);const p=point(e);
+    if(touchGesture.held)control({type:'pointer',action:'up',button:0,...p});
+    else if(!touchGesture.moved){control({type:'pointer',action:'down',button:0,...p});setTimeout(()=>control({type:'pointer',action:'up',button:0,...p}),45)}
+    touchGesture=null;return;
+  }
+  control({type:'pointer',action:'up',button:e.button,...point(e)});
+});
+wrap.addEventListener('pointercancel',e=>{if(touchGesture?.id===e.pointerId){clearTimeout(touchGesture.timer);if(touchGesture.held)control({type:'pointer',action:'up',button:0,...touchGesture.last});touchGesture=null}});
 wrap.addEventListener('wheel',e=>{e.preventDefault();control({type:'wheel',dx:e.deltaX,dy:e.deltaY})},{passive:false});
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>control({type:'key',action:'press',key:b.dataset.key}));
 document.querySelectorAll('[data-combo]').forEach(b=>b.onclick=()=>control({type:'combo',keys:b.dataset.combo.split('-')}));
