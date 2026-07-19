@@ -63,6 +63,14 @@ app.post('/api/logout', (_req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/status', requireSession, (_req, res) => res.json({ deviceId: DEVICE_ID, online: Boolean(agent?.readyState === WebSocket.OPEN) }));
+app.get('/api/ice', requireSession, (_req, res) => {
+  const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (process.env.TURN_URLS && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({ urls: process.env.TURN_URLS.split(',').map(url => url.trim()), username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ iceServers });
+});
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   maxAge: 0,
@@ -74,6 +82,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 });
 let agent = null;
 const viewers = new Set();
+let activeViewer = null;
 
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url, 'http://localhost').pathname !== '/ws') return socket.destroy();
@@ -88,7 +97,7 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { ws.isAlive = true; });
   const user = session(req);
   if (user?.role === 'viewer') {
-    ws.role = 'viewer'; viewers.add(ws); send(ws, { type: 'status', online: Boolean(agent?.readyState === WebSocket.OPEN), deviceId: DEVICE_ID });
+    ws.role = 'viewer'; ws.peerId = crypto.randomUUID(); viewers.add(ws); send(ws, { type: 'status', online: Boolean(agent?.readyState === WebSocket.OPEN), deviceId: DEVICE_ID });
   } else {
     ws.role = 'pending';
     const timer = setTimeout(() => ws.close(4401, 'authentication timeout'), 5000);
@@ -107,12 +116,22 @@ wss.on('connection', (ws, req) => {
     if (ws.role === 'pending') return;
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     if (!['offer', 'answer', 'ice', 'disconnect'].includes(msg.type)) return;
-    if (ws.role === 'viewer') send(agent, { ...msg, peerId: 'viewer' });
-    if (ws.role === 'agent') for (const viewer of viewers) send(viewer, msg);
+    if (ws.role === 'viewer') {
+      if (msg.type === 'offer') {
+        if (activeViewer && activeViewer !== ws) send(activeViewer, { type: 'disconnect', reason: 'another viewer connected' });
+        activeViewer = ws;
+      }
+      if (activeViewer === ws || msg.type === 'offer') send(agent, { ...msg, peerId: ws.peerId });
+      if (msg.type === 'disconnect' && activeViewer === ws) activeViewer = null;
+    }
+    if (ws.role === 'agent') {
+      const target = [...viewers].find(viewer => viewer.peerId === msg.peerId) || activeViewer;
+      send(target, msg);
+    }
   });
   ws.on('close', () => {
     viewers.delete(ws);
-    if (ws.role === 'viewer') send(agent, { type: 'disconnect' });
+    if (activeViewer === ws) { send(agent, { type: 'disconnect', peerId: ws.peerId }); activeViewer = null; }
     if (agent === ws) { agent = null; broadcastStatus(); }
   });
 });

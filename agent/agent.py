@@ -51,12 +51,14 @@ def handle_control(raw, monitor):
 
 async def run(cfg):
     pc=None
+    active_peer=None
     try:
         async with websockets.connect(cfg['server'].rstrip('/')+'/ws',max_size=2**20,ping_interval=30,ping_timeout=60,close_timeout=10) as ws:
             await ws.send(json.dumps({'type':'agent-auth','deviceId':cfg['deviceId'],'secret':cfg['secret']}))
             async for raw in ws:
                 m=json.loads(raw)
                 if m['type']=='offer':
+                    active_peer=m.get('peerId')
                     if pc and pc.connectionState!='closed': await pc.close()
                     pc=RTCPeerConnection(); track=ScreenTrack(cfg.get('fps',30)); pc.addTrack(track)
                     @pc.on('datachannel')
@@ -67,15 +69,15 @@ async def run(cfg):
                         channel.on('message',on_message)
                     @pc.on('icecandidate')
                     async def on_ice(c):
-                        if c and ws.state.name=='OPEN': await ws.send(json.dumps({'type':'ice','candidate':{'candidate':'candidate:'+c.to_sdp(),'sdpMid':c.sdpMid,'sdpMLineIndex':c.sdpMLineIndex}}))
+                        if c and ws.state.name=='OPEN': await ws.send(json.dumps({'type':'ice','peerId':active_peer,'candidate':{'candidate':'candidate:'+c.to_sdp(),'sdpMid':c.sdpMid,'sdpMLineIndex':c.sdpMLineIndex}}))
                     await pc.setRemoteDescription(RTCSessionDescription(sdp=m['sdp']['sdp'],type=m['sdp']['type']))
                     answer=await pc.createAnswer();await pc.setLocalDescription(answer)
-                    await ws.send(json.dumps({'type':'answer','sdp':{'sdp':pc.localDescription.sdp,'type':pc.localDescription.type}}))
-                elif m['type']=='ice' and pc and pc.connectionState!='closed' and m.get('candidate'):
+                    await ws.send(json.dumps({'type':'answer','peerId':active_peer,'sdp':{'sdp':pc.localDescription.sdp,'type':pc.localDescription.type}}))
+                elif m['type']=='ice' and m.get('peerId')==active_peer and pc and pc.connectionState!='closed' and m.get('candidate'):
                     c=m['candidate']; cand=candidate_from_sdp(c['candidate'].removeprefix('candidate:'));cand.sdpMid=c.get('sdpMid');cand.sdpMLineIndex=c.get('sdpMLineIndex');await pc.addIceCandidate(cand)
-                elif m['type']=='disconnect' and pc:
+                elif m['type']=='disconnect' and (not m.get('peerId') or m.get('peerId')==active_peer) and pc:
                     if pc.connectionState!='closed':await pc.close()
-                    pc=None
+                    pc=None;active_peer=None
     finally:
         if pc and pc.connectionState!='closed':await pc.close()
 

@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const login = $('login'), remote = $('remote'), badge = $('badge'), connectBtn = $('connect');
 const video = $('screen'), wrap = $('screenWrap'), hint = $('hint'), keyboardInput = $('keyboardInput'), remoteCursor=$('remoteCursor');
-let ws, pc, dc, online = false, connecting = false, lastMove = 0, touchGesture = null;
+let ws, pc, dc, online = false, connecting = false, connectTimer = null, lastMove = 0, touchGesture = null;
 let inputMode=matchMedia('(pointer:coarse)').matches?'trackpad':'direct';
 const activeTouches=new Map();
 let cursorState=null,cursorSizeIndex=1;
@@ -44,23 +44,26 @@ async function enterLandscape(){
 }
 async function connect(){
   if(connecting||pc?.connectionState==='connected'||pc?.connectionState==='connecting')return;
+  disconnect(false);
   connecting=true;connectBtn.disabled=true;connectBtn.textContent='接続中…';
   await enterLandscape();
-  disconnect(false); pc=new RTCPeerConnection({iceServers});
+  const iceConfig=await api('/api/ice').catch(()=>({iceServers}));
+  pc=new RTCPeerConnection({iceServers:iceConfig.iceServers});
   pc.addTransceiver('video',{direction:'recvonly'});
   pc.ontrack=e=>{video.srcObject=e.streams[0];hint.hidden=true};
   pc.onicecandidate=e=>{if(e.candidate)sendSignal({type:'ice',candidate:e.candidate})};
   pc.onconnectionstatechange=()=>{
     const state=pc.connectionState;badge.textContent=state==='connected'?'操作中':`PC ${state}`;
-    if(state==='connected'){connecting=false;connectBtn.textContent='接続済み';connectBtn.disabled=true}
-    if(['failed','closed','disconnected'].includes(state)){connecting=false;connectBtn.textContent='再接続';connectBtn.disabled=!online;hint.hidden=false}
+    if(state==='connected'){clearTimeout(connectTimer);connecting=false;connectBtn.textContent='接続済み';connectBtn.disabled=true}
+    if(['failed','closed','disconnected'].includes(state)){clearTimeout(connectTimer);connecting=false;connectBtn.textContent='再接続';connectBtn.disabled=!online;hint.hidden=false}
   };
   dc=pc.createDataChannel('control',{ordered:true});dc.onopen=()=>{hint.hidden=true};dc.onclose=()=>{hint.hidden=false};dc.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='cursor')placeRemoteCursor(m.x,m.y)}catch{}};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);sendSignal({type:'offer',sdp:pc.localDescription});
+  connectTimer=setTimeout(()=>{if(pc&&pc.connectionState!=='connected'){pc.close();connecting=false;connectBtn.textContent='再接続';connectBtn.disabled=!online;badge.textContent='接続タイムアウト';hint.textContent='回線を確認して、もう一度「再接続」を押してください';hint.hidden=false}},15000);
 }
 function sendSignal(m){if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(m))}
 function control(m){if(dc?.readyState==='open')dc.send(JSON.stringify(m))}
-function disconnect(signal=true){if(signal)sendSignal({type:'disconnect'});dc?.close();pc?.close();dc=null;pc=null;connecting=false;connectBtn.textContent='接続';connectBtn.disabled=!online;video.srcObject=null;remoteCursor.classList.remove('visible')}
+function disconnect(signal=true){clearTimeout(connectTimer);if(signal)sendSignal({type:'disconnect'});dc?.close();pc?.close();dc=null;pc=null;connecting=false;connectBtn.textContent='接続';connectBtn.disabled=!online;video.srcObject=null;remoteCursor.classList.remove('visible')}
 connectBtn.onclick=()=>connect().catch(err=>{console.error(err);connecting=false;connectBtn.textContent='再接続';connectBtn.disabled=!online;badge.textContent='接続失敗'});
 function point(e){const r=video.getBoundingClientRect(),vw=video.videoWidth||16,vh=video.videoHeight||9,videoRatio=vw/vh,boxRatio=r.width/r.height;let w,h,x0,y0;if(boxRatio>videoRatio){h=r.height;w=h*videoRatio;x0=r.left+(r.width-w)/2;y0=r.top}else{w=r.width;h=w/videoRatio;x0=r.left;y0=r.top+(r.height-h)/2}return{x:Math.max(0,Math.min(1,(e.clientX-x0)/w)),y:Math.max(0,Math.min(1,(e.clientY-y0)/h))}}
 function placeRemoteCursor(x,y){
