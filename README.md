@@ -35,6 +35,26 @@ cd agent
 
 iPadのSafariでRender URLを開き、ログイン後「接続」を押します。
 
+### PC側を1クリックで起動
+
+`agent`フォルダで次を実行すると、デスクトップに `My Remote PC` ショートカットを作成します。
+
+```powershell
+.\setup-shortcut.ps1
+```
+
+Windowsログイン時に自動起動する場合：
+
+```powershell
+.\enable-autostart.ps1
+```
+
+自動起動を解除する場合：
+
+```powershell
+.\disable-autostart.ps1
+```
+
 ## 制限
 
 - WindowsのUACなど「セキュアデスクトップ」は操作できません。
