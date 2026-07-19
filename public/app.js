@@ -5,6 +5,17 @@ const video = $('screen'), wrap = $('screenWrap'), hint = $('hint'), keyboardInp
 let ws, pc, dc, online = false, lastMove = 0, touchGesture = null;
 const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 
+function syncViewport(){
+  const viewport=window.visualViewport;
+  document.documentElement.style.setProperty('--app-height',`${Math.floor(viewport?.height||window.innerHeight)}px`);
+  document.documentElement.style.setProperty('--app-top',`${Math.floor(viewport?.offsetTop||0)}px`);
+}
+syncViewport();
+window.addEventListener('resize',syncViewport);
+window.addEventListener('orientationchange',()=>setTimeout(syncViewport,150));
+window.visualViewport?.addEventListener('resize',syncViewport);
+window.visualViewport?.addEventListener('scroll',syncViewport);
+
 async function api(url, options={}) { const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'通信エラー'); return r.json(); }
 async function openApp(){
   try { await api('/api/status'); login.hidden=true; remote.hidden=false; openSocket(); }
