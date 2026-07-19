@@ -45,6 +45,8 @@ def handle_control(raw, monitor):
             for k in keys:keyboard.press(k)
             for k in reversed(keys):keyboard.release(k)
         except (ValueError,TypeError):pass
+    mx,my=mouse.position
+    return {'type':'cursor','x':max(0,min(1,(mx-monitor['left'])/monitor['width'])),'y':max(0,min(1,(my-monitor['top'])/monitor['height']))}
 
 async def run(cfg):
     pc=None
@@ -56,7 +58,11 @@ async def run(cfg):
                 if pc: await pc.close()
                 pc=RTCPeerConnection(); track=ScreenTrack(cfg.get('fps',30)); pc.addTrack(track)
                 @pc.on('datachannel')
-                def on_dc(channel): channel.on('message',lambda data:handle_control(data,track.monitor))
+                def on_dc(channel):
+                    def on_message(data):
+                        state=handle_control(data,track.monitor)
+                        if state:channel.send(json.dumps(state))
+                    channel.on('message',on_message)
                 @pc.on('icecandidate')
                 async def on_ice(c):
                     if c: await ws.send(json.dumps({'type':'ice','candidate':{'candidate':'candidate:'+c.to_sdp(),'sdpMid':c.sdpMid,'sdpMLineIndex':c.sdpMLineIndex}}))

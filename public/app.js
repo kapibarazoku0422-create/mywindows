@@ -1,15 +1,17 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const login = $('login'), remote = $('remote'), badge = $('badge'), connectBtn = $('connect');
-const video = $('screen'), wrap = $('screenWrap'), hint = $('hint'), keyboardInput = $('keyboardInput');
+const video = $('screen'), wrap = $('screenWrap'), hint = $('hint'), keyboardInput = $('keyboardInput'), remoteCursor=$('remoteCursor');
 let ws, pc, dc, online = false, lastMove = 0, touchGesture = null;
 let inputMode=matchMedia('(pointer:coarse)').matches?'trackpad':'direct';
 const activeTouches=new Map();
+let cursorState=null,cursorSizeIndex=1;
 const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 function syncViewport(){
   const viewport=window.visualViewport;
   document.documentElement.style.setProperty('--app-height',`${Math.floor(viewport?.height||window.innerHeight)}px`);
+  if(cursorState)placeRemoteCursor(cursorState.x,cursorState.y);
 }
 syncViewport();
 window.addEventListener('resize',syncViewport);
@@ -47,7 +49,7 @@ async function connect(){
   pc.ontrack=e=>{video.srcObject=e.streams[0];hint.hidden=true};
   pc.onicecandidate=e=>{if(e.candidate)sendSignal({type:'ice',candidate:e.candidate})};
   pc.onconnectionstatechange=()=>{badge.textContent=pc.connectionState==='connected'?'操作中':`PC ${pc.connectionState}`;if(['failed','closed','disconnected'].includes(pc.connectionState))hint.hidden=false};
-  dc=pc.createDataChannel('control',{ordered:true});dc.onopen=()=>{hint.hidden=true};dc.onclose=()=>{hint.hidden=false};
+  dc=pc.createDataChannel('control',{ordered:true});dc.onopen=()=>{hint.hidden=true};dc.onclose=()=>{hint.hidden=false};dc.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='cursor')placeRemoteCursor(m.x,m.y)}catch{}};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);sendSignal({type:'offer',sdp:pc.localDescription});
 }
 function sendSignal(m){if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(m))}
@@ -55,6 +57,11 @@ function control(m){if(dc?.readyState==='open')dc.send(JSON.stringify(m))}
 function disconnect(signal=true){if(signal)sendSignal({type:'disconnect'});dc?.close();pc?.close();dc=null;pc=null;video.srcObject=null}
 connectBtn.onclick=connect;
 function point(e){const r=video.getBoundingClientRect(),vw=video.videoWidth||16,vh=video.videoHeight||9,videoRatio=vw/vh,boxRatio=r.width/r.height;let w,h,x0,y0;if(boxRatio>videoRatio){h=r.height;w=h*videoRatio;x0=r.left+(r.width-w)/2;y0=r.top}else{w=r.width;h=w/videoRatio;x0=r.left;y0=r.top+(r.height-h)/2}return{x:Math.max(0,Math.min(1,(e.clientX-x0)/w)),y:Math.max(0,Math.min(1,(e.clientY-y0)/h))}}
+function placeRemoteCursor(x,y){
+  cursorState={x,y};const r=video.getBoundingClientRect(),wr=wrap.getBoundingClientRect(),vw=video.videoWidth||16,vh=video.videoHeight||9,vr=vw/vh,br=r.width/r.height;
+  let w,h,x0,y0;if(br>vr){h=r.height;w=h*vr;x0=r.left+(r.width-w)/2;y0=r.top}else{w=r.width;h=w/vr;x0=r.left;y0=r.top+(r.height-h)/2}
+  remoteCursor.style.left=`${x0-wr.left+x*w}px`;remoteCursor.style.top=`${y0-wr.top+y*h}px`;remoteCursor.classList.add('visible');
+}
 wrap.addEventListener('contextmenu',e=>e.preventDefault());
 function touchPointer(action,state,button=0){
   const message={type:'pointer',action,button};
@@ -122,6 +129,8 @@ $('leftClick').onclick=()=>toolbarClick(0);$('rightClick').onclick=()=>toolbarCl
 const fitLevels=[100,94,90];let fitIndex=matchMedia('(pointer:coarse)').matches?1:0;
 function applyFit(){const size=`${fitLevels[fitIndex]}%`;video.style.width=size;video.style.height=size;$('fit').textContent=`表示 ${fitLevels[fitIndex]}%`}
 $('fit').onclick=()=>{fitIndex=(fitIndex+1)%fitLevels.length;applyFit()};applyFit();
+const cursorSizes=[28,40,52];function applyCursorSize(){const size=cursorSizes[cursorSizeIndex];remoteCursor.style.setProperty('--cursor-size',`${size}px`);$('cursorSize').textContent=`カーソル ${['小','大','特大'][cursorSizeIndex]}`}
+$('cursorSize').onclick=()=>{cursorSizeIndex=(cursorSizeIndex+1)%cursorSizes.length;applyCursorSize()};applyCursorSize();
 keyboardInput.addEventListener('beforeinput',e=>{if(e.data)control({type:'text',text:e.data});if(e.inputType==='deleteContentBackward')control({type:'key',action:'press',key:'Backspace'});keyboardInput.value=''});
 document.addEventListener('keydown',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'down',key:e.key,code:e.code})}});
 document.addEventListener('keyup',e=>{if(remote.hidden)return;if(!['INPUT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();control({type:'key',action:'up',key:e.key,code:e.code})}});

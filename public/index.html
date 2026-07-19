@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content">
-  <meta name="theme-color" content="#070b14"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>My Remote PC</title><link rel="manifest" href="/manifest.webmanifest?v=6"><link rel="stylesheet" href="/style.css?v=6">
+  <meta name="theme-color" content="#070b14"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>My Remote PC</title><link rel="manifest" href="/manifest.webmanifest?v=7"><link rel="stylesheet" href="/style.css?v=7">
 </head>
 <body>
   <main>
@@ -13,10 +13,10 @@
     </section>
     <section id="remote" hidden>
       <header><strong>My Remote PC</strong><span id="badge">確認中</span><button id="connect">接続</button><button id="fullscreen">全画面</button><button id="logout">終了</button></header>
-      <div id="screenWrap"><video id="screen" autoplay playsinline></video><div id="hint">PCがオンラインになるまでお待ちください</div><div id="modeHint"></div></div>
-      <div id="toolbar"><button id="mode">🖱 タッチパッド</button><button id="leftClick">左クリック</button><button id="rightClick">右クリック</button><button id="keyboard">⌨︎ キーボード</button><button data-key="Escape">Esc</button><button data-key="Tab">Tab</button><button data-key="Meta">Win</button><button data-combo="ctrl-alt-delete">Ctrl Alt Del</button><button id="fit">表示 94%</button></div>
+      <div id="screenWrap"><video id="screen" autoplay playsinline></video><div id="remoteCursor" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M3 2 25 18l-10 2 6 9-5 3-6-10-7 8z"/></svg></div><div id="hint">PCがオンラインになるまでお待ちください</div><div id="modeHint"></div></div>
+      <div id="toolbar"><button id="mode">🖱 タッチパッド</button><button id="leftClick">左クリック</button><button id="rightClick">右クリック</button><button id="cursorSize">カーソル 大</button><button id="keyboard">⌨︎ キーボード</button><button data-key="Escape">Esc</button><button data-key="Tab">Tab</button><button data-key="Meta">Win</button><button data-combo="ctrl-alt-delete">Ctrl Alt Del</button><button id="fit">表示 94%</button></div>
       <input id="keyboardInput" aria-label="キーボード入力" autocomplete="off" autocapitalize="off">
       <div id="rotateNotice"><strong>端末を横向きにしてください</strong><span>横向きになると操作画面を表示します</span></div>
     </section>
-  </main><script src="/app.js?v=6" defer></script>
+  </main><script src="/app.js?v=7" defer></script>
 </body></html>
