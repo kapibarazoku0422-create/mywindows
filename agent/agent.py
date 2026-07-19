@@ -20,10 +20,17 @@ def handle_control(raw, monitor):
     except Exception:return
     t=m.get('type')
     if t=='pointer':
-        mouse.position=(monitor['left']+int(m.get('x',0)*monitor['width']),monitor['top']+int(m.get('y',0)*monitor['height']))
-        if m.get('action')=='down':mouse.press(BUTTONS.get(m.get('button'),Button.left))
-        elif m.get('action')=='up':mouse.release(BUTTONS.get(m.get('button'),Button.left))
-    elif t=='wheel': mouse.scroll(-int(m.get('dx',0)/100),-int(m.get('dy',0)/100))
+        action=m.get('action')
+        if action=='move-relative': mouse.move(int(m.get('dx',0)),int(m.get('dy',0)))
+        elif 'x' in m and 'y' in m: mouse.position=(monitor['left']+int(m['x']*monitor['width']),monitor['top']+int(m['y']*monitor['height']))
+        if action=='down':mouse.press(BUTTONS.get(m.get('button'),Button.left))
+        elif action=='up':mouse.release(BUTTONS.get(m.get('button'),Button.left))
+    elif t=='wheel':
+        dx,dy=float(m.get('dx',0)),float(m.get('dy',0))
+        sx,sy=-int(dx/60),-int(dy/60)
+        if dx and not sx:sx=-1 if dx>0 else 1
+        if dy and not sy:sy=-1 if dy>0 else 1
+        mouse.scroll(sx,sy)
     elif t=='text': keyboard.type(m.get('text',''))
     elif t=='key':
         key=KEYS.get(m.get('key'),m.get('key',''))
