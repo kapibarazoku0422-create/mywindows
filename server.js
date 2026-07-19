@@ -112,6 +112,7 @@ wss.on('connection', (ws, req) => {
   });
   ws.on('close', () => {
     viewers.delete(ws);
+    if (ws.role === 'viewer') send(agent, { type: 'disconnect' });
     if (agent === ws) { agent = null; broadcastStatus(); }
   });
 });

@@ -1,6 +1,7 @@
 import argparse, asyncio, json, os, time
 import av, mss, numpy as np, websockets
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, VideoStreamTrack
+from aiortc.exceptions import InvalidStateError
 from aiortc.sdp import candidate_from_sdp
 from pynput.keyboard import Controller as Keyboard, Key
 from pynput.mouse import Controller as Mouse, Button
@@ -50,32 +51,43 @@ def handle_control(raw, monitor):
 
 async def run(cfg):
     pc=None
-    async with websockets.connect(cfg['server'].rstrip('/')+'/ws',max_size=2**20,ping_interval=20) as ws:
-        await ws.send(json.dumps({'type':'agent-auth','deviceId':cfg['deviceId'],'secret':cfg['secret']}))
-        async for raw in ws:
-            m=json.loads(raw)
-            if m['type']=='offer':
-                if pc: await pc.close()
-                pc=RTCPeerConnection(); track=ScreenTrack(cfg.get('fps',30)); pc.addTrack(track)
-                @pc.on('datachannel')
-                def on_dc(channel):
-                    def on_message(data):
-                        state=handle_control(data,track.monitor)
-                        if state:channel.send(json.dumps(state))
-                    channel.on('message',on_message)
-                @pc.on('icecandidate')
-                async def on_ice(c):
-                    if c: await ws.send(json.dumps({'type':'ice','candidate':{'candidate':'candidate:'+c.to_sdp(),'sdpMid':c.sdpMid,'sdpMLineIndex':c.sdpMLineIndex}}))
-                await pc.setRemoteDescription(RTCSessionDescription(sdp=m['sdp']['sdp'],type=m['sdp']['type']))
-                answer=await pc.createAnswer();await pc.setLocalDescription(answer)
-                await ws.send(json.dumps({'type':'answer','sdp':{'sdp':pc.localDescription.sdp,'type':pc.localDescription.type}}))
-            elif m['type']=='ice' and pc and m.get('candidate'):
-                c=m['candidate']; cand=candidate_from_sdp(c['candidate'].removeprefix('candidate:'));cand.sdpMid=c.get('sdpMid');cand.sdpMLineIndex=c.get('sdpMLineIndex');await pc.addIceCandidate(cand)
-            elif m['type']=='disconnect' and pc: await pc.close();pc=None
+    try:
+        async with websockets.connect(cfg['server'].rstrip('/')+'/ws',max_size=2**20,ping_interval=30,ping_timeout=60,close_timeout=10) as ws:
+            await ws.send(json.dumps({'type':'agent-auth','deviceId':cfg['deviceId'],'secret':cfg['secret']}))
+            async for raw in ws:
+                m=json.loads(raw)
+                if m['type']=='offer':
+                    if pc and pc.connectionState!='closed': await pc.close()
+                    pc=RTCPeerConnection(); track=ScreenTrack(cfg.get('fps',30)); pc.addTrack(track)
+                    @pc.on('datachannel')
+                    def on_dc(channel):
+                        def on_message(data):
+                            state=handle_control(data,track.monitor)
+                            if state:channel.send(json.dumps(state))
+                        channel.on('message',on_message)
+                    @pc.on('icecandidate')
+                    async def on_ice(c):
+                        if c and ws.state.name=='OPEN': await ws.send(json.dumps({'type':'ice','candidate':{'candidate':'candidate:'+c.to_sdp(),'sdpMid':c.sdpMid,'sdpMLineIndex':c.sdpMLineIndex}}))
+                    await pc.setRemoteDescription(RTCSessionDescription(sdp=m['sdp']['sdp'],type=m['sdp']['type']))
+                    answer=await pc.createAnswer();await pc.setLocalDescription(answer)
+                    await ws.send(json.dumps({'type':'answer','sdp':{'sdp':pc.localDescription.sdp,'type':pc.localDescription.type}}))
+                elif m['type']=='ice' and pc and pc.connectionState!='closed' and m.get('candidate'):
+                    c=m['candidate']; cand=candidate_from_sdp(c['candidate'].removeprefix('candidate:'));cand.sdpMid=c.get('sdpMid');cand.sdpMLineIndex=c.get('sdpMLineIndex');await pc.addIceCandidate(cand)
+                elif m['type']=='disconnect' and pc:
+                    if pc.connectionState!='closed':await pc.close()
+                    pc=None
+    finally:
+        if pc and pc.connectionState!='closed':await pc.close()
 
 async def main():
     p=argparse.ArgumentParser();p.add_argument('--config',default='config.json');args=p.parse_args()
     with open(args.config,encoding='utf-8') as f:cfg=json.load(f)
+    loop=asyncio.get_running_loop()
+    def handle_loop_error(loop,context):
+        error=context.get('exception')
+        if isinstance(error,InvalidStateError) and 'RTCIceTransport is closed' in str(error):return
+        loop.default_exception_handler(context)
+    loop.set_exception_handler(handle_loop_error)
     while True:
         try: await run(cfg)
         except Exception as e: print(f'接続エラー: {e}; 5秒後に再試行');await asyncio.sleep(5)
